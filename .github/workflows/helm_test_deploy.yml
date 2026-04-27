@@ -1,36 +1,223 @@
-# This is a basic workflow to help you get started with Actions
+name: Helm Deploy to EKS
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: ["main"]
+    paths:
+      - "ai-eks/**"
+      - "dbchart/**"
   workflow_dispatch:
+    inputs:
+      action:
+        description: "Deploy action"
+        required: true
+        type: choice
+        options:
+          - upgrade
+          - install
+          - diff-only
+      chart:
+        description: "Which chart to deploy"
+        required: true
+        type: choice
+        options:
+          - ai-eks
+          - dbchart
+          - all
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: ai-speaking-cluster
+  AI_EKS_RELEASE: ai-app
+  AI_EKS_NAMESPACE: ai-speaking
+  DB_RELEASE: ai-db
+  DB_NAMESPACE: ai-db
+
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  # ─── Detect what changed ───
+  detect-changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    outputs:
+      ai_eks: ${{ steps.changes.outputs.ai_eks }}
+      dbchart: ${{ steps.changes.outputs.dbchart }}
+      frontend_tag_changed: ${{ steps.diff.outputs.frontend_tag_changed }}
+      backend_tag_changed: ${{ steps.diff.outputs.backend_tag_changed }}
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed charts
+        id: changes
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CHART="${{ github.event.inputs.chart }}"
+            echo "ai_eks=$( [[ "$CHART" == "ai-eks" || "$CHART" == "all" ]] && echo true || echo false )" >> $GITHUB_OUTPUT
+            echo "dbchart=$( [[ "$CHART" == "dbchart" || "$CHART" == "all" ]] && echo true || echo false )" >> $GITHUB_OUTPUT
+          else
+            CHANGED=$(git diff --name-only HEAD~1 HEAD)
+            echo "ai_eks=$(echo "$CHANGED" | grep -q '^ai-eks/' && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "dbchart=$(echo "$CHANGED" | grep -q '^dbchart/' && echo true || echo false)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect which image tags changed
+        id: diff
+        run: |
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            DIFF=$(git diff HEAD~1 HEAD -- ai-eks/values.yaml || true)
+            echo "frontend_tag_changed=$(echo "$DIFF" | grep -q '+.*frontend' && echo "$DIFF" | grep -q 'tag:' && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "backend_tag_changed=$(echo "$DIFF" | grep -q '+.*backend' && echo "$DIFF" | grep -q 'tag:' && echo true || echo false)" >> $GITHUB_OUTPUT
+          else
+            echo "frontend_tag_changed=true" >> $GITHUB_OUTPUT
+            echo "backend_tag_changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Summary
+        run: |
+          echo "ai-eks chart changed: ${{ steps.changes.outputs.ai_eks }}"
+          echo "dbchart changed: ${{ steps.changes.outputs.dbchart }}"
+          echo "Frontend tag changed: ${{ steps.diff.outputs.frontend_tag_changed }}"
+          echo "Backend tag changed: ${{ steps.diff.outputs.backend_tag_changed }}"
+
+  # ─── Deploy ai-eks chart ───
+  deploy-ai-eks:
+    name: Deploy ai-eks
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ai_eks == 'true'
+    steps:
       - uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm lint
+        run: helm lint ai-eks/
+
+      - name: Helm diff (show what will change)
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          helm plugin install https://github.com/databus23/helm-diff || true
+          helm diff upgrade ${{ env.AI_EKS_RELEASE }} ai-eks/ \
+            --namespace ${{ env.AI_EKS_NAMESPACE }} \
+            --allow-unreleased || echo "No existing release found, will do fresh install"
+
+      - name: Check cluster state before deploy
+        run: |
+          echo "=== Current Deployments ==="
+          kubectl get deployments -n ${{ env.AI_EKS_NAMESPACE }} -o wide 2>/dev/null || echo "Namespace not found yet"
+          echo ""
+          echo "=== Current Pods ==="
+          kubectl get pods -n ${{ env.AI_EKS_NAMESPACE }} -o wide 2>/dev/null || echo "No pods yet"
+          echo ""
+          echo "=== Current Images ==="
+          kubectl get deployments -n ${{ env.AI_EKS_NAMESPACE }} -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.template.spec.containers[0].image}{"\n"}{end}' 2>/dev/null || true
+
+      - name: Helm upgrade/install
+        run: |
+          ACTION="${{ github.event.inputs.action || 'upgrade' }}"
+          if [[ "$ACTION" == "diff-only" ]]; then
+            echo "Diff-only mode, skipping deploy"
+            exit 0
+          fi
+          helm upgrade --install ${{ env.AI_EKS_RELEASE }} ai-eks/ \
+            --namespace ${{ env.AI_EKS_NAMESPACE }} \
+            --create-namespace \
+            --wait \
+            --timeout 5m
+
+      - name: Rollout status — Frontend
+        if: needs.detect-changes.outputs.frontend_tag_changed == 'true'
+        run: |
+          echo "Frontend tag was updated, checking rollout..."
+          kubectl rollout status deployment/frontend -n ${{ env.AI_EKS_NAMESPACE }} --timeout=3m || true
+
+      - name: Rollout status — Backend
+        if: needs.detect-changes.outputs.backend_tag_changed == 'true'
+        run: |
+          echo "Backend tag was updated, checking rollout..."
+          kubectl rollout status deployment/backend -n ${{ env.AI_EKS_NAMESPACE }} --timeout=3m || true
+
+      - name: Verify cluster state after deploy
+        run: |
+          echo "=== Deployments ==="
+          kubectl get deployments -n ${{ env.AI_EKS_NAMESPACE }} -o wide
+          echo ""
+          echo "=== Pods ==="
+          kubectl get pods -n ${{ env.AI_EKS_NAMESPACE }} -o wide
+          echo ""
+          echo "=== Desired vs Actual ==="
+          kubectl get deployments -n ${{ env.AI_EKS_NAMESPACE }} -o custom-columns=\
+          'NAME:.metadata.name,DESIRED:.spec.replicas,READY:.status.readyReplicas,UP-TO-DATE:.status.updatedReplicas,IMAGE:.spec.template.spec.containers[0].image'
+          echo ""
+          echo "=== Services ==="
+          kubectl get svc -n ${{ env.AI_EKS_NAMESPACE }}
+
+      - name: Health check
+        run: |
+          echo "Checking if all pods are ready..."
+          READY=$(kubectl get deployments -n ${{ env.AI_EKS_NAMESPACE }} -o jsonpath='{range .items[*]}{.metadata.name}: desired={.spec.replicas} ready={.status.readyReplicas}{"\n"}{end}')
+          echo "$READY"
+          if echo "$READY" | grep -q 'ready=<none>\|ready=0'; then
+            echo "WARNING: Some deployments have no ready pods!"
+            exit 1
+          fi
+          echo "All deployments healthy!"
+
+  # ─── Deploy dbchart ───
+  deploy-dbchart:
+    name: Deploy dbchart
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dbchart == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm lint
+        run: helm lint dbchart/
+
+      - name: Helm upgrade/install
+        run: |
+          ACTION="${{ github.event.inputs.action || 'upgrade' }}"
+          if [[ "$ACTION" == "diff-only" ]]; then
+            echo "Diff-only mode, skipping deploy"
+            exit 0
+          fi
+          helm upgrade --install ${{ env.DB_RELEASE }} dbchart/ \
+            --namespace ${{ env.DB_NAMESPACE }} \
+            --create-namespace \
+            --wait \
+            --timeout 5m
+
+      - name: Verify database deployment
+        run: |
+          echo "=== DB Pods ==="
+          kubectl get pods -n ${{ env.DB_NAMESPACE }} -o wide
+          echo ""
+          echo "=== DB Services ==="
+          kubectl get svc -n ${{ env.DB_NAMESPACE }}
