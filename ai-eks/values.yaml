@@ -32,7 +32,7 @@ backend:
   image:
     repository: 703671929703.dkr.ecr.us-east-1.amazonaws.com/backapp
     pullPolicy: IfNotPresent
-    tag: "v0.1"
+    tag: "v20260427-86319ad"
   service:
     type: NodePort
     port: 8000
