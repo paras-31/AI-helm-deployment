@@ -3,9 +3,6 @@ name: Helm Deploy to EKS
 on:
   push:
     branches: ["main"]
-    paths:
-      - "ai-eks/**"
-      - "dbchart/**"
   workflow_dispatch:
     inputs:
       action:
@@ -31,7 +28,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  EKS_CLUSTER: ai-speaking-cluster
+  EKS_CLUSTER: eksdemo
   AI_EKS_RELEASE: ai-app
   AI_EKS_NAMESPACE: ai-speaking
   DB_RELEASE: ai-db
@@ -42,6 +39,9 @@ jobs:
   detect-changes:
     name: Detect Changes
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'chore:')
     outputs:
       ai_eks: ${{ steps.changes.outputs.ai_eks }}
       dbchart: ${{ steps.changes.outputs.dbchart }}
@@ -96,7 +96,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::703671929703:role/ECR-UPDATE-ROLE
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Update kubeconfig
