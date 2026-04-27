@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-eks.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "ai-eks.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.backend.service.type }}
+  ports:
+    - port: {{ .Values.backend.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "ai-eks.selectorLabels" . | nindent 4 }}

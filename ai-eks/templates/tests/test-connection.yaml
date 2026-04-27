@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "ai-eks.fullname" . }}-test-connection"
+  labels:
+    {{- include "ai-eks.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "ai-eks.fullname" . }}:{{ .Values.frontend.service.port }}']
+  restartPolicy: Never
