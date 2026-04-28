@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "ai-eks.fullname" . }}
+  name: {{ .Values.backend.nameOverride }}
   namespace: {{ .Values.namespace }}
   labels:
     {{- include "ai-eks.labels" . | nindent 4 }}

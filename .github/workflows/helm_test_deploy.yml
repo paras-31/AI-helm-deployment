@@ -213,6 +213,8 @@ jobs:
 
           helm upgrade --install secrets-provider-aws aws-secrets-manager/secrets-store-csi-driver-provider-aws \
             --namespace kube-system \
+            --set "linux.serviceAccount.create=false" \
+            --set "linux.serviceAccount.name=secrets-store-csi-driver" \
             --wait --timeout 3m
 
           echo "Verifying CRDs..."
