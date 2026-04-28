@@ -33,6 +33,7 @@ env:
   AI_EKS_NAMESPACE: ai-speaking
   DB_RELEASE: ai-db
   DB_NAMESPACE: ai-db
+  ROLES_ARN: arn:aws:iam::703671929703:role/ECR-UPDATE-ROLE
 
 jobs:
   # ─── Detect what changed ───
@@ -189,7 +190,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.ROLES_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Update kubeconfig
