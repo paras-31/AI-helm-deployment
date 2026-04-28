@@ -3,6 +3,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "dbchart.fullname" . }}
+  namespace: {{ .Values.namespace }}
   labels:
     {{- include "dbchart.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}

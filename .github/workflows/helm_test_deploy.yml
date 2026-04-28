@@ -221,7 +221,14 @@ jobs:
           kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
 
       - name: Helm lint
-        run: helm lint dbchart/
+        run: helm lint dbchart/ --namespace ${{ env.DB_NAMESPACE }}
+
+      - name: Helm diff (show what will change)
+        run: |
+          helm plugin install https://github.com/databus23/helm-diff || true
+          helm diff upgrade ${{ env.DB_RELEASE }} dbchart/ \
+            --namespace ${{ env.DB_NAMESPACE }} \
+            --allow-unreleased || echo "No existing release found, will do fresh install"
 
       - name: Helm upgrade/install
         run: |
@@ -238,8 +245,14 @@ jobs:
 
       - name: Verify database deployment
         run: |
+          echo "=== DB Deployments ==="
+          kubectl get deployments -n ${{ env.DB_NAMESPACE }} -o wide
+          echo ""
           echo "=== DB Pods ==="
           kubectl get pods -n ${{ env.DB_NAMESPACE }} -o wide
           echo ""
           echo "=== DB Services ==="
           kubectl get svc -n ${{ env.DB_NAMESPACE }}
+          echo ""
+          echo "=== Helm Release ==="
+          helm ls -n ${{ env.DB_NAMESPACE }}

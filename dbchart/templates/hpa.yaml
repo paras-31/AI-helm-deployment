@@ -3,6 +3,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "dbchart.fullname" . }}
+  namespace: {{ .Values.namespace }}
   labels:
     {{- include "dbchart.labels" . | nindent 4 }}
 spec:
