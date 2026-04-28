@@ -199,6 +199,25 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
+      - name: Install Secrets Store CSI Driver + AWS Provider
+        run: |
+          helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+          helm repo add aws-secrets-manager https://aws.github.io/secrets-store-csi-driver-provider-aws
+          helm repo update
+
+          helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
+            --namespace kube-system \
+            --set syncSecret.enabled=true \
+            --set enableSecretRotation=true \
+            --wait --timeout 3m
+
+          helm upgrade --install secrets-provider-aws aws-secrets-manager/secrets-store-csi-driver-provider-aws \
+            --namespace kube-system \
+            --wait --timeout 3m
+
+          echo "Verifying CRDs..."
+          kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
+
       - name: Helm lint
         run: helm lint dbchart/
 
