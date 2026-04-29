@@ -196,26 +196,27 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
 
+      - name: Setup OIDC provider
+        run: |
+          eksctl utils associate-iam-oidc-provider \
+            --cluster ${{ env.EKS_CLUSTER }} \
+            --region ${{ env.AWS_REGION }} \
+            --approve
+
       - name: Install Helm
         uses: azure/setup-helm@v4
 
       - name: Install Secrets Store CSI Driver + AWS Provider
         run: |
+          # 1. Install the CSI driver
           helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
-          helm repo add aws-secrets-manager https://aws.github.io/secrets-store-csi-driver-provider-aws
           helm repo update
 
-          helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
-            --namespace kube-system \
-            --set syncSecret.enabled=true \
-            --set enableSecretRotation=true \
-            --wait --timeout 3m
-
-          helm upgrade --install secrets-provider-aws aws-secrets-manager/secrets-store-csi-driver-provider-aws \
-            --namespace kube-system \
-            --set "linux.serviceAccount.create=false" \
-            --set "linux.serviceAccount.name=secrets-store-csi-driver" \
-            --wait --timeout 3m
+          helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver --namespace kube-system
+          
+          # 2. Since you're using AWS Secrets Manager, also install the AWS provider
+          kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml
+          
 
           echo "Verifying CRDs..."
           kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
