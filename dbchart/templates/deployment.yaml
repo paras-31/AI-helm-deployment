@@ -41,6 +41,9 @@ spec:
             - name: postgres
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           envFrom:
             - secretRef:
                 name: {{ .Values.secrets.k8sSecretName }}
