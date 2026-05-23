@@ -15,7 +15,7 @@ frontend:
     pullPolicy: IfNotPresent
     tag: "v20260523-862f3cb"
   service:
-    type: NodePort
+    type: LoadBalancer
     port: 3000
   nameOverride: "frontend"
   selectorLabels:
@@ -27,7 +27,7 @@ imagePullSecrets: []
 
 
 # =============================== Backend ===============================
-  
+
 backend:
   image:
     repository: 703671929703.dkr.ecr.us-east-1.amazonaws.com/backapp
@@ -39,6 +39,54 @@ backend:
   nameOverride: "backend"
   selectorLabels:
     app: backend
+
+  # Health probes — FastAPI exposes /health, not /
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+
+  # Non-secret config is rendered into a ConfigMap and injected via envFrom.
+  configMapName: backend-config
+  config:
+    APP_NAME: "AI Speaking Backend"
+    ENVIRONMENT: "production"
+    DEBUG: "false"
+    DATABASE_URL: "postgresql+psycopg://postgres:CHANGE_ME@postgresdb.ai-db.svc.cluster.local:5432/aispeaking"
+    # CORS — comma-separated. Replace with the public host(s) of the frontend.
+    CORS_ORIGINS: "http://frontend.ai-speaking.svc.cluster.local:3000"
+    UPLOAD_DIR: "/app/data/uploads"
+    PERSIST_AUDIO: "false"   # ephemeral pod filesystem — don't try to keep audio
+    MAX_AUDIO_MB: "25"
+    MAX_HISTORY_TURNS: "10"
+    ALLOWED_AUDIO_EXTENSIONS: "wav,mp3,m4a,webm"
+    RATE_LIMIT_PER_MINUTE: "120"
+    LLM_PROVIDER: "groq"
+    OPENAI_BASE_URL: "https://api.groq.com/openai/v1"
+    OPENAI_MODEL: "llama-3.3-70b-versatile"
+    OPENAI_TIMEOUT_SECONDS: "30"
+    STT_PROVIDER: "groq"
+    STT_MODEL: "whisper-large-v3-turbo"
+    STT_BASE_URL: "https://api.groq.com/openai/v1"
+
+  # Secret env vars. Set createSecret=false in production and create the Secret
+  # out of band (e.g. via External Secrets Operator or SecretProviderClass)
+  # so the Grok API key is not committed to git.
+  secretName: backend-secrets
+  createSecret: false
+  secrets: {}
+  #   OPENAI_API_KEY: "gsk_..."
+  #   SECRET_KEY: "long-random-string"
 
 
 # This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
@@ -147,15 +195,9 @@ resources: {}
   #   cpu: 100m
   #   memory: 128Mi
 
-# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
-livenessProbe:
-  httpGet:
-    path: /
-    port: http
-readinessProbe:
-  httpGet:
-    path: /
-    port: http
+# Per-deployment probes are configured under .Values.backend.{liveness,readiness}Probe.
+# These top-level entries are intentionally left empty; the backend deployment
+# template only renders probes when .Values.backend.* is set.
 
 # This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/
 autoscaling:

@@ -1,0 +1,13 @@
+{{- if and .Values.backend.config .Values.backend.configMapName }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.backend.configMapName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ include "ai-eks.backendName" . }}
+data:
+  {{- range $key, $value := .Values.backend.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+{{- end }}

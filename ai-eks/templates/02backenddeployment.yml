@@ -29,6 +29,23 @@ spec:
             - name: http
               containerPort: {{ .Values.backend.service.port }}
               protocol: TCP
+          envFrom:
+            {{- if .Values.backend.configMapName }}
+            - configMapRef:
+                name: {{ .Values.backend.configMapName }}
+            {{- end }}
+            {{- if .Values.backend.secretName }}
+            - secretRef:
+                name: {{ .Values.backend.secretName }}
+            {{- end }}
+          {{- with .Values.backend.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.backend.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

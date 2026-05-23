@@ -33,8 +33,7 @@ env:
   AI_EKS_NAMESPACE: ai-speaking
   DB_RELEASE: ai-db
   DB_NAMESPACE: ai-db
-  # ROLES_ARN: arn:aws:iam::703671929703:role/ECR-UPDATE-ROLE
-  ROLE_ARN: arn:aws:iam::243284855400:role/ECR-UPDATE-ROLE
+  ROLES_ARN: arn:aws:iam::243284855400:role/ECR-UPDATE-ROLE
 
 jobs:
   # ─── Detect what changed ───
@@ -98,7 +97,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::703671929703:role/ECR-UPDATE-ROLE
+          role-to-assume: ${{ env.ROLES_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Update kubeconfig
@@ -231,6 +230,16 @@ jobs:
           echo "Verifying CRDs..."
           kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
 
+      - name: Install EBS CSI Driver
+        run: |
+          helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+          helm repo update
+          helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver --namespace kube-system
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/storageclass.yaml
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/sidecarinjector.yaml
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/rbac-role.yaml
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/rbac-role-binding.yaml
+
       - name: Helm lint
         run: helm lint dbchart/ --namespace ${{ env.DB_NAMESPACE }}
 
@@ -251,8 +260,6 @@ jobs:
           helm upgrade --install ${{ env.DB_RELEASE }} dbchart/ \
             --namespace ${{ env.DB_NAMESPACE }} \
             --create-namespace \
-            --wait \
-            --timeout 5m
 
       - name: Verify database deployment
         run: |
