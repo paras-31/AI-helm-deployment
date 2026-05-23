@@ -11,7 +11,7 @@ namespace: ai-speaking
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 frontend:
   image:
-    repository: 703671929703.dkr.ecr.us-east-1.amazonaws.com/frontend
+    repository: 243284855400.dkr.ecr.us-east-1.amazonaws.com/frontend
     pullPolicy: IfNotPresent
     tag: "v20260523-862f3cb"
   service:
@@ -30,7 +30,7 @@ imagePullSecrets: []
 
 backend:
   image:
-    repository: 703671929703.dkr.ecr.us-east-1.amazonaws.com/backapp
+    repository: 243284855400.dkr.ecr.us-east-1.amazonaws.com/backapp
     pullPolicy: IfNotPresent
     tag: "v20260523-862f3cb"
   service:
