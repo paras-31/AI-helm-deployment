@@ -231,14 +231,22 @@ jobs:
           kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
 
       - name: Install EBS CSI Driver
+        # The chart installs the controller, node daemon, RBAC, ServiceAccount,
+        # and the CSIDriver resource. EKS ships with a default `gp2` StorageClass,
+        # so we don't need to apply one ourselves. If you ever want gp3 or an
+        # encrypted variant, add the StorageClass manifest to the repo and
+        # `kubectl apply -f` it here.
         run: |
           helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
           helm repo update
-          helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver --namespace kube-system
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/storageclass.yaml
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/sidecarinjector.yaml
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/rbac-role.yaml
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/rbac-role-binding.yaml
+          helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
+            --namespace kube-system \
+            --wait --timeout 5m
+
+          echo "=== Verifying CSI driver is up ==="
+          kubectl -n kube-system rollout status deploy/ebs-csi-controller --timeout=2m
+          kubectl get csidriver ebs.csi.aws.com
+          kubectl get storageclass
 
       - name: Helm lint
         run: helm lint dbchart/ --namespace ${{ env.DB_NAMESPACE }}
