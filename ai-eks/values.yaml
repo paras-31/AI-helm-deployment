@@ -13,7 +13,7 @@ frontend:
   image:
     repository: 703671929703.dkr.ecr.us-east-1.amazonaws.com/frontend
     pullPolicy: IfNotPresent
-    tag: "v0.1"
+    tag: "v20260523-862f3cb"
   service:
     type: NodePort
     port: 3000
@@ -32,7 +32,7 @@ backend:
   image:
     repository: 703671929703.dkr.ecr.us-east-1.amazonaws.com/backapp
     pullPolicy: IfNotPresent
-    tag: "v20260514-f8307b0"
+    tag: "v20260523-862f3cb"
   service:
     type: NodePort
     port: 8000
