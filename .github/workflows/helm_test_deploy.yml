@@ -243,15 +243,14 @@ jobs:
 
       - name: Install EBS CSI Driver
         run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
           helm repo update
-          helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver --namespace kube-system \
-          --set controller.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::243284855400:role/AmazonEKS_EBS_CSI_DriverRole
+          helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
+            --namespace kube-system \
+            --set controller.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::${ACCOUNT_ID}:role/AmazonEKS_EBS_CSI_DriverRole
 
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/storageclass.yaml
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/sidecarinjector.yaml
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/rbac-role.yaml
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v2.26.0/deploy/kubernetes/rbac-role-binding.yaml
+          kubectl rollout status deployment/ebs-csi-controller -n kube-system --timeout=3m
 
       - name: Helm lint
         run: helm lint dbchart/ --namespace ${{ env.DB_NAMESPACE }}

@@ -7,7 +7,7 @@ replicaCount: 1
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
-  repository: 703671929703.dkr.ecr.us-east-1.amazonaws.com/postgressdb
+  repository: 243284855400.dkr.ecr.us-east-1.amazonaws.com/postgressdb
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
@@ -33,7 +33,7 @@ serviceAccount:
   automount: true
   # Annotations to add to the service account.
   annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::703671929703:role/pod-secretfetch"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::243284855400:role/pod-secretfetch"
     eks.amazonaws.com/role-session-name: "db-sa"
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template.
