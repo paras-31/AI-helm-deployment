@@ -85,8 +85,8 @@ backend:
   secretName: backend-secrets
   createSecret: true
   secrets: {}
-  #   OPENAI_API_KEY: "gsk_..."
-  #   SECRET_KEY: "long-random-string"
+    OPENAI_API_KEY: "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"
+    SECRET_KEY: "long-random-string"
 
 
 # This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
