@@ -83,7 +83,7 @@ backend:
   # out of band (e.g. via External Secrets Operator or SecretProviderClass)
   # so the Grok API key is not committed to git.
   secretName: backend-secrets
-  createSecret: false
+  createSecret: true
   secrets: {}
   #   OPENAI_API_KEY: "gsk_..."
   #   SECRET_KEY: "long-random-string"

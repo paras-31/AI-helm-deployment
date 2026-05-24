@@ -34,10 +34,6 @@ spec:
             - configMapRef:
                 name: {{ .Values.backend.configMapName }}
             {{- end }}
-            {{- if .Values.backend.secretName }}
-            - secretRef:
-                name: {{ .Values.backend.secretName }}
-            {{- end }}
           {{- with .Values.backend.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
