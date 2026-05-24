@@ -1,0 +1,204 @@
+name: IAM Bootstrap (IRSA roles for IAM-backed secrets)
+
+# Idempotently creates the IAM policies + IRSA roles that the Helm charts
+# expect to exist before they deploy:
+#
+#   * pod-secretfetch       → used by ai-db/db-sa for the dbchart
+#                             (reads POSTGRES_PASSWORD from Secrets Manager)
+#   * pod-backend-secrets   → used by ai-speaking/backend-sa for ai-eks
+#                             (reads ai-speaking/backend from Secrets Manager)
+#
+# Roles are created with `eksctl create iamserviceaccount --role-only` so the
+# trust policy is wired to the right K8s ServiceAccount via the cluster OIDC
+# provider; the actual K8s ServiceAccount object is still created by Helm.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which IRSA role(s) to provision"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - pod-secretfetch
+          - pod-backend-secrets
+  workflow_call:
+    inputs:
+      target:
+        description: "Which IRSA role(s) to provision"
+        required: false
+        default: all
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: eksdemo
+  AI_EKS_NAMESPACE: ai-speaking
+  DB_NAMESPACE: ai-db
+  BOOTSTRAP_ROLE_ARN: arn:aws:iam::243284855400:role/ECR-UPDATE-ROLE
+
+jobs:
+  iam-bootstrap:
+    name: Provision IRSA roles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.BOOTSTRAP_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      - name: Install eksctl
+        run: |
+          ARCH=amd64
+          PLATFORM=$(uname -s)_$ARCH
+          curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
+          tar -xzf eksctl_$PLATFORM.tar.gz -C /tmp
+          sudo mv /tmp/eksctl /usr/local/bin
+          eksctl version
+
+      - name: Ensure cluster OIDC provider is associated
+        run: |
+          eksctl utils associate-iam-oidc-provider \
+            --cluster ${{ env.EKS_CLUSTER }} \
+            --region ${{ env.AWS_REGION }} \
+            --approve
+
+      - name: Resolve target
+        id: target
+        run: |
+          TARGET="${{ inputs.target }}"
+          if [[ -z "$TARGET" ]]; then TARGET="all"; fi
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "Provisioning target: $TARGET"
+
+      # ─── pod-secretfetch (dbchart → ai-db/db-sa) ───
+      - name: Ensure IAM policy pod-secretfetch-policy
+        if: steps.target.outputs.target == 'all' || steps.target.outputs.target == 'pod-secretfetch'
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          POLICY_NAME=pod-secretfetch-policy
+          POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${POLICY_NAME}"
+
+          cat > /tmp/pod-secretfetch-policy.json <<EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret"
+              ],
+              "Resource": "arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:POSTGRES_PASSWORD-*"
+            }]
+          }
+          EOF
+
+          if aws iam get-policy --policy-arn "$POLICY_ARN" >/dev/null 2>&1; then
+            echo "Policy $POLICY_NAME already exists ($POLICY_ARN) — skipping create."
+          else
+            echo "Creating IAM policy $POLICY_NAME..."
+            aws iam create-policy \
+              --policy-name "$POLICY_NAME" \
+              --policy-document file:///tmp/pod-secretfetch-policy.json \
+              --description "Allow IRSA pods in ai-db to read POSTGRES_PASSWORD from Secrets Manager" >/dev/null
+          fi
+          echo "POD_SECRETFETCH_POLICY_ARN=$POLICY_ARN" >> $GITHUB_ENV
+
+      - name: Ensure IRSA role pod-secretfetch
+        if: steps.target.outputs.target == 'all' || steps.target.outputs.target == 'pod-secretfetch'
+        run: |
+          ROLE_NAME=pod-secretfetch
+
+          if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+            echo "Role $ROLE_NAME already exists — skipping eksctl create."
+          else
+            echo "Creating IRSA role $ROLE_NAME (trust: system:serviceaccount:${{ env.DB_NAMESPACE }}:db-sa)..."
+            eksctl create iamserviceaccount \
+              --name db-sa \
+              --namespace ${{ env.DB_NAMESPACE }} \
+              --cluster ${{ env.EKS_CLUSTER }} \
+              --region ${{ env.AWS_REGION }} \
+              --role-name "$ROLE_NAME" \
+              --role-only \
+              --attach-policy-arn "$POD_SECRETFETCH_POLICY_ARN" \
+              --approve
+          fi
+
+          echo "Trust policy:"
+          aws iam get-role --role-name "$ROLE_NAME" \
+            --query 'Role.AssumeRolePolicyDocument' --output json
+
+      # ─── pod-backend-secrets (ai-eks → ai-speaking/backend-sa) ───
+      - name: Ensure IAM policy pod-backend-secrets-policy
+        if: steps.target.outputs.target == 'all' || steps.target.outputs.target == 'pod-backend-secrets'
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          POLICY_NAME=pod-backend-secrets-policy
+          POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${POLICY_NAME}"
+
+          cat > /tmp/pod-backend-secrets-policy.json <<EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret"
+              ],
+              "Resource": "arn:aws:secretsmanager:${{ env.AWS_REGION }}:${ACCOUNT_ID}:secret:ai-speaking/backend-*"
+            }]
+          }
+          EOF
+
+          if aws iam get-policy --policy-arn "$POLICY_ARN" >/dev/null 2>&1; then
+            echo "Policy $POLICY_NAME already exists ($POLICY_ARN) — skipping create."
+          else
+            echo "Creating IAM policy $POLICY_NAME..."
+            aws iam create-policy \
+              --policy-name "$POLICY_NAME" \
+              --policy-document file:///tmp/pod-backend-secrets-policy.json \
+              --description "Allow IRSA pods in ai-speaking to read ai-speaking/backend from Secrets Manager" >/dev/null
+          fi
+          echo "POD_BACKEND_SECRETS_POLICY_ARN=$POLICY_ARN" >> $GITHUB_ENV
+
+      - name: Ensure IRSA role pod-backend-secrets
+        if: steps.target.outputs.target == 'all' || steps.target.outputs.target == 'pod-backend-secrets'
+        run: |
+          ROLE_NAME=pod-backend-secrets
+
+          if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+            echo "Role $ROLE_NAME already exists — skipping eksctl create."
+          else
+            echo "Creating IRSA role $ROLE_NAME (trust: system:serviceaccount:${{ env.AI_EKS_NAMESPACE }}:backend-sa)..."
+            eksctl create iamserviceaccount \
+              --name backend-sa \
+              --namespace ${{ env.AI_EKS_NAMESPACE }} \
+              --cluster ${{ env.EKS_CLUSTER }} \
+              --region ${{ env.AWS_REGION }} \
+              --role-name "$ROLE_NAME" \
+              --role-only \
+              --attach-policy-arn "$POD_BACKEND_SECRETS_POLICY_ARN" \
+              --approve
+          fi
+
+          echo "Trust policy:"
+          aws iam get-role --role-name "$ROLE_NAME" \
+            --query 'Role.AssumeRolePolicyDocument' --output json
+
+      - name: Summary
+        run: |
+          echo "=== IRSA roles ==="
+          aws iam get-role --role-name pod-secretfetch     --query 'Role.Arn' --output text 2>/dev/null || echo "pod-secretfetch: not present"
+          aws iam get-role --role-name pod-backend-secrets --query 'Role.Arn' --output text 2>/dev/null || echo "pod-backend-secrets: not present"

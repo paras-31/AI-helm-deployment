@@ -85,20 +85,40 @@ jobs:
           echo "Frontend tag changed: ${{ steps.diff.outputs.frontend_tag_changed }}"
           echo "Backend tag changed: ${{ steps.diff.outputs.backend_tag_changed }}"
 
+  # ─── Bootstrap IAM (IRSA roles for AWS Secrets Manager) ───
+  # Idempotently provisions pod-secretfetch and pod-backend-secrets via the
+  # reusable iam_bootstrap workflow. Runs whenever either chart is being
+  # deployed so a "fresh" cluster always has the roles in place before Helm
+  # installs the charts that reference them in ServiceAccount annotations.
+  bootstrap-iam:
+    name: Bootstrap IAM roles
+    needs: detect-changes
+    if: |
+      needs.detect-changes.result == 'success' &&
+      (needs.detect-changes.outputs.ai_eks == 'true' || needs.detect-changes.outputs.dbchart == 'true')
+    uses: ./.github/workflows/iam_bootstrap.yml
+    with:
+      target: all
+    permissions:
+      id-token: write
+      contents: read
+
   # ─── Deploy ai-eks chart ───
   deploy-ai-eks:
     name: Deploy ai-eks
     runs-on: ubuntu-latest
-    # needs both detect-changes and deploy-dbchart so that when chart=all is
-    # selected, dbchart (which installs the Secrets Store CSI driver and
-    # EBS CSI driver) finishes before ai-eks deploys. When only ai-eks is
-    # selected, deploy-dbchart is skipped — GitHub Actions treats skipped
-    # jobs as successful needs, so this still works.
-    needs: [detect-changes, deploy-dbchart]
+    # needs detect-changes, bootstrap-iam (so IRSA roles exist), and
+    # deploy-dbchart so that when chart=all is selected, dbchart (which
+    # installs the Secrets Store CSI driver and EBS CSI driver) finishes
+    # before ai-eks deploys. When only ai-eks is selected, deploy-dbchart
+    # is skipped — GitHub Actions treats skipped jobs as successful needs,
+    # so this still works.
+    needs: [detect-changes, bootstrap-iam, deploy-dbchart]
     if: |
       always() &&
       needs.detect-changes.result == 'success' &&
       needs.detect-changes.outputs.ai_eks == 'true' &&
+      needs.bootstrap-iam.result == 'success' &&
       (needs.deploy-dbchart.result == 'success' || needs.deploy-dbchart.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
@@ -247,8 +267,10 @@ jobs:
   deploy-dbchart:
     name: Deploy dbchart
     runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.dbchart == 'true'
+    needs: [detect-changes, bootstrap-iam]
+    if: |
+      needs.detect-changes.outputs.dbchart == 'true' &&
+      needs.bootstrap-iam.result == 'success'
     steps:
       - uses: actions/checkout@v4
 

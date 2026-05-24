@@ -1,0 +1,55 @@
+name: clear-helm-charts
+
+# Clear Helm Charts
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which Helm chart(s) to clear"
+        required: true
+        type: choice
+        options:
+          - ai-eks
+          - dbchart
+          - all
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: eksdemo
+  AI_EKS_NAMESPACE: ai-speaking
+  DB_NAMESPACE: ai-db
+  BOOTSTRAP_ROLE_ARN: arn:aws:iam::243284855400:role/ECR-UPDATE-ROLE
+
+jobs:
+  clear-helm-charts:
+    name: Clear Helm Charts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.BOOTSTRAP_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      - name: Clear Helm Charts
+        run: |
+         if [ -n "${{ inputs.target }}" ]; then
+            helm delete ai-eks --namespace ${{ env.AI_EKS_NAMESPACE }}
+          fi
+          if [ -n "${{ inputs.target }}" ]; then
+            helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
+          fi
+         else
+          helm delete ai-eks --namespace ${{ env.AI_EKS_NAMESPACE }}
+          helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
+         fi
