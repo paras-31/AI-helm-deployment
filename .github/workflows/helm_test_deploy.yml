@@ -89,8 +89,17 @@ jobs:
   deploy-ai-eks:
     name: Deploy ai-eks
     runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.ai_eks == 'true'
+    # needs both detect-changes and deploy-dbchart so that when chart=all is
+    # selected, dbchart (which installs the Secrets Store CSI driver and
+    # EBS CSI driver) finishes before ai-eks deploys. When only ai-eks is
+    # selected, deploy-dbchart is skipped — GitHub Actions treats skipped
+    # jobs as successful needs, so this still works.
+    needs: [detect-changes, deploy-dbchart]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.ai_eks == 'true' &&
+      (needs.deploy-dbchart.result == 'success' || needs.deploy-dbchart.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
 
@@ -105,6 +114,45 @@ jobs:
 
       - name: Install Helm
         uses: azure/setup-helm@v4
+
+      - name: Verify cluster prerequisites
+        run: |
+          echo "Checking for Secrets Store CSI driver (required for backend secrets sync)..."
+          if ! kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io >/dev/null 2>&1; then
+            echo "::error::SecretProviderClass CRD not found. Run the dbchart deploy at least once to install the CSI driver."
+            exit 1
+          fi
+
+          echo "Waiting for Secrets Store CSI driver DaemonSet to be ready..."
+          kubectl rollout status daemonset/csi-secrets-store-secrets-store-csi-driver \
+            -n kube-system --timeout=2m
+
+          echo "Verifying tokenRequests is configured on CSIDriver (required for IRSA)..."
+          AUDIENCE=$(kubectl get csidriver secrets-store.csi.k8s.io -o jsonpath='{.spec.tokenRequests[0].audience}' 2>/dev/null || true)
+          if [[ "$AUDIENCE" != "sts.amazonaws.com" ]]; then
+            echo "::error::CSIDriver tokenRequests audience is '$AUDIENCE', expected 'sts.amazonaws.com'."
+            echo "Re-run the dbchart deploy so the helm chart updates the CSIDriver resource."
+            exit 1
+          fi
+
+          echo "All CSI driver prerequisites satisfied."
+
+      - name: Clean stale Helm-managed backend-secrets (if any)
+        run: |
+          # In older releases the chart created backend-secrets directly via Helm.
+          # Now the CSI driver creates it. If a Helm-managed copy exists, delete it
+          # so the CSI driver can create a fresh one without ownership conflict.
+          if kubectl get secret backend-secrets -n ${{ env.AI_EKS_NAMESPACE }} >/dev/null 2>&1; then
+            MANAGED_BY=$(kubectl get secret backend-secrets -n ${{ env.AI_EKS_NAMESPACE }} -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}' 2>/dev/null || true)
+            if [[ "$MANAGED_BY" == "Helm" ]]; then
+              echo "Found Helm-managed backend-secrets — deleting so CSI driver can take over."
+              kubectl delete secret backend-secrets -n ${{ env.AI_EKS_NAMESPACE }}
+            else
+              echo "backend-secrets exists and is managed by '$MANAGED_BY' (likely CSI driver) — leaving alone."
+            fi
+          else
+            echo "No existing backend-secrets — nothing to clean."
+          fi
 
       - name: Helm lint
         run: helm lint ai-eks/
@@ -139,6 +187,23 @@ jobs:
             --create-namespace \
             --wait \
             --timeout 5m
+
+      - name: Verify backend-secrets was synced by CSI driver
+        run: |
+          echo "Waiting up to 60s for CSI driver to sync backend-secrets..."
+          for i in $(seq 1 12); do
+            if kubectl get secret backend-secrets -n ${{ env.AI_EKS_NAMESPACE }} >/dev/null 2>&1; then
+              echo "backend-secrets is present in the cluster."
+              KEYS=$(kubectl get secret backend-secrets -n ${{ env.AI_EKS_NAMESPACE }} -o jsonpath='{.data}' | jq -r 'keys | join(", ")')
+              echo "Keys synced: $KEYS"
+              exit 0
+            fi
+            echo "  ... not yet (attempt $i/12), sleeping 5s"
+            sleep 5
+          done
+          echo "::error::backend-secrets never appeared. Check the AWS secret 'ai-speaking/backend' exists, the IAM role 'pod-backend-secrets' has GetSecretValue on it, and the OIDC trust policy matches system:serviceaccount:ai-speaking:backend-sa."
+          kubectl describe pod -n ${{ env.AI_EKS_NAMESPACE }} -l app=backend | tail -30
+          exit 1
 
       - name: Rollout status — Frontend
         if: needs.detect-changes.outputs.frontend_tag_changed == 'true'
@@ -217,21 +282,28 @@ jobs:
 
       - name: Install Secrets Store CSI Driver + AWS Provider
         run: |
-          # 1. Install the CSI driver
           helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
           helm repo update
 
           helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
             --namespace kube-system \
             --set syncSecret.enabled=true \
-            --set enableSecretRotation=true
-          
-          # 2. Since you're using AWS Secrets Manager, also install the AWS provider
-          kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml
-          
+            --set enableSecretRotation=true \
+            --set 'tokenRequests[0].audience=sts.amazonaws.com'
 
-          echo "Verifying CRDs..."
+          kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml
+
+          echo "Waiting for CSI driver DaemonSet to be ready..."
+          kubectl rollout status daemonset/csi-secrets-store-secrets-store-csi-driver -n kube-system --timeout=3m
+
+          echo "Verifying CRD and CSIDriver config..."
           kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
+          AUDIENCE=$(kubectl get csidriver secrets-store.csi.k8s.io -o jsonpath='{.spec.tokenRequests[0].audience}' 2>/dev/null || true)
+          if [[ "$AUDIENCE" != "sts.amazonaws.com" ]]; then
+            echo "::error::CSIDriver tokenRequests not applied (got '$AUDIENCE'). The helm chart should have set this."
+            exit 1
+          fi
+          echo "CSI driver ready with tokenRequests audience=$AUDIENCE"
 
       - name: Clean existing EBS CSI iamserviceaccount (if exists)
         run: |
@@ -303,6 +375,8 @@ jobs:
           helm upgrade --install ${{ env.DB_RELEASE }} dbchart/ \
             --namespace ${{ env.DB_NAMESPACE }} \
             --create-namespace \
+            --wait \
+            --timeout 5m
 
       - name: Verify database deployment
         run: |
