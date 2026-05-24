@@ -79,27 +79,38 @@ backend:
     STT_MODEL: "whisper-large-v3-turbo"
     STT_BASE_URL: "https://api.groq.com/openai/v1"
 
-  # Secret env vars. Set createSecret=false in production and create the Secret
-  # out of band (e.g. via External Secrets Operator or SecretProviderClass)
-  # so the Grok API key is not committed to git.
+  # Secret env vars. createSecret=false because the K8s Secret is created
+  # by the Secrets Store CSI driver pulling from AWS Secrets Manager
+  # (configured via awsSecrets below). Do NOT put real values here.
   secretName: backend-secrets
-  createSecret: true
+  createSecret: false
   secrets: {}
-    OPENAI_API_KEY: "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"
-    SECRET_KEY: "long-random-string"
+
+  # AWS Secrets Manager → K8s Secret via Secrets Store CSI driver.
+  # Requires the cluster to have csi-secrets-store + aws-provider installed
+  # (handled by the dbchart deploy workflow) and the IAM role referenced in
+  # .Values.serviceAccount.annotations.role-arn to have GetSecretValue
+  # permission on the source secret.
+  awsSecrets:
+    enabled: true
+    region: us-east-1
+    sourceSecretName: "ai-speaking/backend"
+    secretProviderClassName: backend-secret-provider
+    keys:
+      - OPENAI_API_KEY
+      - SECRET_KEY
 
 
-# This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
+# Service account used by the backend pod. The IAM role annotated here is
+# what the AWS Secrets Store CSI provider assumes via IRSA to fetch the
+# secret defined in backend.awsSecrets.
 serviceAccount:
-  # Specifies whether a service account should be created.
-  create: false
-  # Automatically mount a ServiceAccount's API credentials?
+  create: true
   automount: true
-  # Annotations to add to the service account.
-  annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template.
-  name: ""
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::243284855400:role/pod-backend-secrets"
+    eks.amazonaws.com/role-session-name: "backend-sa"
+  name: "backend-sa"
 
 # This is for setting Kubernetes Annotations to a Pod.
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/

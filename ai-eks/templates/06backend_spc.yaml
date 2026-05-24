@@ -1,0 +1,29 @@
+{{- if .Values.backend.awsSecrets.enabled -}}
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: {{ .Values.backend.awsSecrets.secretProviderClassName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ include "ai-eks.backendName" . }}
+spec:
+  provider: aws
+  parameters:
+    region: {{ .Values.backend.awsSecrets.region }}
+    objects: |
+      - objectName: "{{ .Values.backend.awsSecrets.sourceSecretName }}"
+        objectType: "secretsmanager"
+        jmesPath:
+{{- range .Values.backend.awsSecrets.keys }}
+          - path: "{{ . }}"
+            objectAlias: "{{ . }}"
+{{- end }}
+  secretObjects:
+    - secretName: {{ .Values.backend.secretName }}
+      type: Opaque
+      data:
+{{- range .Values.backend.awsSecrets.keys }}
+        - objectName: "{{ . }}"
+          key: "{{ . }}"
+{{- end }}
+{{- end }}

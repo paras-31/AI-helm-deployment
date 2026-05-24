@@ -17,6 +17,9 @@ spec:
       labels:
         app: {{ include "ai-eks.backendName" . }}
     spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "ai-eks.serviceAccountName" . }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -34,6 +37,16 @@ spec:
             - configMapRef:
                 name: {{ .Values.backend.configMapName }}
             {{- end }}
+            {{- if .Values.backend.secretName }}
+            - secretRef:
+                name: {{ .Values.backend.secretName }}
+            {{- end }}
+          {{- if .Values.backend.awsSecrets.enabled }}
+          volumeMounts:
+            - name: backend-secrets-store
+              mountPath: "/mnt/secrets"
+              readOnly: true
+          {{- end }}
           {{- with .Values.backend.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
@@ -46,3 +59,12 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- if .Values.backend.awsSecrets.enabled }}
+      volumes:
+        - name: backend-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Values.backend.awsSecrets.secretProviderClassName }}
+      {{- end }}
