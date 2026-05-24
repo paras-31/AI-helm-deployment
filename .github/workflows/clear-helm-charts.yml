@@ -1,6 +1,14 @@
 name: clear-helm-charts
 
-# Clear Helm Charts
+# Tear down Helm releases for a fresh redeploy.
+#
+# target = ai-eks         → uninstall the ai-app release in ai-speaking
+# target = dbchart        → uninstall the ai-db release in ai-db
+# target = all            → both of the above + the cluster-wide helpers
+#                           installed by deploy-dbchart in kube-system
+#                           (csi-secrets-store, aws-ebs-csi-driver)
+#
+# Everything is idempotent — if a release doesn't exist we just log and move on.
 
 on:
   workflow_dispatch:
@@ -13,6 +21,16 @@ on:
           - ai-eks
           - dbchart
           - all
+      wipe_namespaces:
+        description: "Also delete the app namespaces (ai-speaking, ai-db)"
+        required: false
+        type: boolean
+        default: false
+      wipe_pgdata:
+        description: "Also delete the pgdata-pvc (DESTRUCTIVE — wipes the Postgres database)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -21,7 +39,9 @@ permissions:
 env:
   AWS_REGION: us-east-1
   EKS_CLUSTER: eksdemo
+  AI_EKS_RELEASE: ai-app
   AI_EKS_NAMESPACE: ai-speaking
+  DB_RELEASE: ai-db
   DB_NAMESPACE: ai-db
   BOOTSTRAP_ROLE_ARN: arn:aws:iam::243284855400:role/ECR-UPDATE-ROLE
 
@@ -41,33 +61,88 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
 
-      - name: check if it exists
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Show current Helm releases
         run: |
-          if helm list --all-namespaces | grep -q "ai-eks"; then
-            echo "ai-eks exists"
-            echo "ai-eks_exists=true" >> $GITHUB_OUTPUT
+          echo "=== All Helm releases ==="
+          helm list --all-namespaces || true
+
+      - name: Uninstall ai-eks release
+        if: inputs.target == 'ai-eks' || inputs.target == 'all'
+        run: |
+          if helm status "${AI_EKS_RELEASE}" -n "${AI_EKS_NAMESPACE}" >/dev/null 2>&1; then
+            echo "Uninstalling release ${AI_EKS_RELEASE} from ${AI_EKS_NAMESPACE}..."
+            helm uninstall "${AI_EKS_RELEASE}" -n "${AI_EKS_NAMESPACE}" --wait --timeout 3m
           else
-            echo "ai-eks does not exist"
-            echo "ai-eks_exists=false" >> $GITHUB_OUTPUT
-          fi
-          if helm list --all-namespaces | grep -q "dbchart"; then
-            echo "dbchart exists"
-            echo "dbchart_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "dbchart does not exist"
-            echo "dbchart_exists=false" >> $GITHUB_OUTPUT
+            echo "Release ${AI_EKS_RELEASE} not found in ${AI_EKS_NAMESPACE} — skipping."
           fi
 
-      - name: Clear Helm Charts
+      - name: Uninstall dbchart release
+        if: inputs.target == 'dbchart' || inputs.target == 'all'
         run: |
-         if [ "${{ steps.check-exists.outputs.ai-eks_exists }}" == "true" ]; then
-            helm delete ai-eks --namespace ${{ env.AI_EKS_NAMESPACE }}
+          if helm status "${DB_RELEASE}" -n "${DB_NAMESPACE}" >/dev/null 2>&1; then
+            echo "Uninstalling release ${DB_RELEASE} from ${DB_NAMESPACE}..."
+            helm uninstall "${DB_RELEASE}" -n "${DB_NAMESPACE}" --wait --timeout 3m
+          else
+            echo "Release ${DB_RELEASE} not found in ${DB_NAMESPACE} — skipping."
           fi
-          if [ "${{ steps.check-exists.outputs.dbchart_exists }}" == "true" ]; then
-            helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
+
+      # When target=all we also tear down the cluster-level helpers that
+      # deploy-dbchart installs (CSI driver + EBS CSI driver). These live in
+      # kube-system so they need to be uninstalled there explicitly.
+      - name: Uninstall kube-system helpers (csi-secrets-store, aws-ebs-csi-driver)
+        if: inputs.target == 'all'
+        run: |
+          for REL in csi-secrets-store aws-ebs-csi-driver; do
+            if helm status "$REL" -n kube-system >/dev/null 2>&1; then
+              echo "Uninstalling $REL from kube-system..."
+              helm uninstall "$REL" -n kube-system --wait --timeout 3m
+            else
+              echo "Release $REL not found in kube-system — skipping."
+            fi
+          done
+
+      - name: Remove AWS Secrets Store CSI provider DaemonSet
+        if: inputs.target == 'all'
+        run: |
+          # Installed via raw manifest (not Helm) in deploy-dbchart, so it
+          # isn't removed by `helm uninstall`. Delete it best-effort.
+          echo "Deleting csi-secrets-store-provider-aws manifest..."
+          kubectl delete -f \
+            https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml \
+            --ignore-not-found=true || true
+
+      - name: Delete pgdata-pvc
+        if: inputs.wipe_pgdata == true && (inputs.target == 'dbchart' || inputs.target == 'all')
+        run: |
+          if kubectl -n "${DB_NAMESPACE}" get pvc pgdata-pvc >/dev/null 2>&1; then
+            echo "Deleting pgdata-pvc in ${DB_NAMESPACE}..."
+            kubectl -n "${DB_NAMESPACE}" delete pvc pgdata-pvc --wait=false || true
+            # Clear finalizers in case PVC is stuck terminating
+            kubectl -n "${DB_NAMESPACE}" patch pvc pgdata-pvc \
+              -p '{"metadata":{"finalizers":null}}' --type=merge 2>/dev/null || true
+          else
+            echo "pgdata-pvc not found — skipping."
           fi
-          if [ "${{ steps.check-exists.outputs.ai-eks_exists }}" == "true" && "${{ steps.check-exists.outputs.dbchart_exists }}" == "true" ]; then
-            helm delete ai-eks --namespace ${{ env.AI_EKS_NAMESPACE }}
-            helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
+
+      - name: Delete app namespaces
+        if: inputs.wipe_namespaces == true
+        run: |
+          if [[ "${{ inputs.target }}" == "ai-eks" || "${{ inputs.target }}" == "all" ]]; then
+            echo "Deleting namespace ${AI_EKS_NAMESPACE}..."
+            kubectl delete namespace "${AI_EKS_NAMESPACE}" --ignore-not-found=true --wait=false
           fi
-         fi
+          if [[ "${{ inputs.target }}" == "dbchart" || "${{ inputs.target }}" == "all" ]]; then
+            echo "Deleting namespace ${DB_NAMESPACE}..."
+            kubectl delete namespace "${DB_NAMESPACE}" --ignore-not-found=true --wait=false
+          fi
+
+      - name: Final state
+        run: |
+          echo "=== Remaining Helm releases ==="
+          helm list --all-namespaces || true
+          echo ""
+          echo "=== Namespaces ==="
+          kubectl get ns
