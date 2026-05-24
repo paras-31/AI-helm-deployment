@@ -41,15 +41,32 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
 
+      - name: check if it exists
+        run: |
+          if helm list --all-namespaces | grep -q "ai-eks"; then
+            echo "ai-eks exists"
+            echo "ai-eks_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "ai-eks does not exist"
+            echo "ai-eks_exists=false" >> $GITHUB_OUTPUT
+          fi
+          if helm list --all-namespaces | grep -q "dbchart"; then
+            echo "dbchart exists"
+            echo "dbchart_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "dbchart does not exist"
+            echo "dbchart_exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Clear Helm Charts
         run: |
-         if [ -n "${{ inputs.target }}" ]; then
+         if [ "${{ steps.check-exists.outputs.ai-eks_exists }}" == "true" ]; then
             helm delete ai-eks --namespace ${{ env.AI_EKS_NAMESPACE }}
           fi
-          if [ -n "${{ inputs.target }}" ]; then
+          if [ "${{ steps.check-exists.outputs.dbchart_exists }}" == "true" ]; then
             helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
           fi
-         else
+          if [ "${{ steps.check-exists.outputs.ai-eks_exists }}" == "true" && "${{ steps.check-exists.outputs.dbchart_exists }}" == "true" ]; then
           helm delete ai-eks --namespace ${{ env.AI_EKS_NAMESPACE }}
           helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
          fi
