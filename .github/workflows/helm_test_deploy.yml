@@ -230,18 +230,30 @@ jobs:
           echo "Verifying CRDs..."
           kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
 
-      - name: clean the stack for ebs already exist in the cluster
+      - name: Clean existing EBS CSI iamserviceaccount (if exists)
         run: |
-          eksctl delete iamserviceaccount --name ebs-csi-controller-sa --namespace kube-system --cluster ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
-          aws cloudformation describe-stacks \
-          --stack-name eksctl-eksdemo-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa \
-          --query "Stacks[0].EnableTerminationProtection"
-          if [ $? -ne 0 ]; then
-            echo "Stack eksctl-eksdemo-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa not found"
-            exit 1
+          STACK_NAME=eksctl-${{ env.EKS_CLUSTER }}-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa
+
+          if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "Stack $STACK_NAME exists — deleting via eksctl..."
+            eksctl delete iamserviceaccount \
+              --name ebs-csi-controller-sa \
+              --namespace kube-system \
+              --cluster ${{ env.EKS_CLUSTER }} \
+              --region ${{ env.AWS_REGION }} \
+              --wait
+            echo "Cleanup complete."
+          else
+            echo "Stack $STACK_NAME does not exist — nothing to clean up."
           fi
-          echo "Stack eksctl-eksdemo-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa found"
-          aws cloudformation delete-stack --stack-name eksctl-eksdemo-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa
+
+          if aws iam get-role --role-name AmazonEKS_EBS_CSI_DriverRole >/dev/null 2>&1; then
+            echo "Orphan role AmazonEKS_EBS_CSI_DriverRole still exists — detaching policies and deleting..."
+            for POLICY_ARN in $(aws iam list-attached-role-policies --role-name AmazonEKS_EBS_CSI_DriverRole --query 'AttachedPolicies[].PolicyArn' --output text); do
+              aws iam detach-role-policy --role-name AmazonEKS_EBS_CSI_DriverRole --policy-arn "$POLICY_ARN"
+            done
+            aws iam delete-role --role-name AmazonEKS_EBS_CSI_DriverRole
+          fi
 
       - name: service account for ebs csi driver
         run: |
