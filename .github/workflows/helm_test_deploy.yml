@@ -237,9 +237,17 @@ jobs:
           --namespace kube-system \
           --cluster ${{ env.EKS_CLUSTER }} \
           --role-name AmazonEKS_EBS_CSI_DriverRole \
-          --role-only \
           --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
           --approve
+
+      - name: validate role in aws
+        run: |
+          aws iam get-role --role-name AmazonEKS_EBS_CSI_DriverRole
+          if [ $? -ne 0 ]; then
+            echo "Role AmazonEKS_EBS_CSI_DriverRole not found"
+            exit 1
+          fi
+          echo "Role AmazonEKS_EBS_CSI_DriverRole found"
 
       - name: Install EBS CSI Driver
         run: |
