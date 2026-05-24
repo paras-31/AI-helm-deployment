@@ -67,6 +67,7 @@ jobs:
             helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
           fi
           if [ "${{ steps.check-exists.outputs.ai-eks_exists }}" == "true" && "${{ steps.check-exists.outputs.dbchart_exists }}" == "true" ]; then
-          helm delete ai-eks --namespace ${{ env.AI_EKS_NAMESPACE }}
-          helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
+            helm delete ai-eks --namespace ${{ env.AI_EKS_NAMESPACE }}
+            helm delete dbchart --namespace ${{ env.DB_NAMESPACE }}
+          fi
          fi
