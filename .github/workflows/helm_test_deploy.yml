@@ -242,7 +242,7 @@ jobs:
               --cluster ${{ env.EKS_CLUSTER }} \
               --region ${{ env.AWS_REGION }} \
               --wait
-            echo "Cleanup complete."
+            echo "CFN stack cleanup complete."
           else
             echo "Stack $STACK_NAME does not exist — nothing to clean up."
           fi
@@ -255,15 +255,19 @@ jobs:
             aws iam delete-role --role-name AmazonEKS_EBS_CSI_DriverRole
           fi
 
-      - name: service account for ebs csi driver
+          echo "Removing any orphan ebs-csi-controller-sa so Helm can own it cleanly..."
+          kubectl delete sa ebs-csi-controller-sa -n kube-system --ignore-not-found
+
+      - name: IAM role for EBS CSI driver
         run: |
           eksctl create iamserviceaccount \
-          --name ebs-csi-controller-sa \
-          --namespace kube-system \
-          --cluster ${{ env.EKS_CLUSTER }} \
-          --role-name AmazonEKS_EBS_CSI_DriverRole \
-          --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
-          --approve
+            --name ebs-csi-controller-sa \
+            --namespace kube-system \
+            --cluster ${{ env.EKS_CLUSTER }} \
+            --role-name AmazonEKS_EBS_CSI_DriverRole \
+            --role-only \
+            --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+            --approve
 
       - name: Install EBS CSI Driver
         run: |
