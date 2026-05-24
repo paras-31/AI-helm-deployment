@@ -230,6 +230,19 @@ jobs:
           echo "Verifying CRDs..."
           kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io
 
+      - name: clean the stack for ebs already exist in the cluster
+        run: |
+          eksctl delete iamserviceaccount --name ebs-csi-controller-sa --namespace kube-system --cluster ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+          aws cloudformation describe-stacks \
+          --stack-name eksctl-eksdemo-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa \
+          --query "Stacks[0].EnableTerminationProtection"
+          if [ $? -ne 0 ]; then
+            echo "Stack eksctl-eksdemo-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa not found"
+            exit 1
+          fi
+          echo "Stack eksctl-eksdemo-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa found"
+          aws cloudformation delete-stack --stack-name eksctl-eksdemo-addon-iamserviceaccount-kube-system-ebs-csi-controller-sa
+
       - name: service account for ebs csi driver
         run: |
           eksctl create iamserviceaccount \
@@ -239,15 +252,6 @@ jobs:
           --role-name AmazonEKS_EBS_CSI_DriverRole \
           --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
           --approve
-
-      - name: validate role in aws
-        run: |
-          aws iam get-role --role-name AmazonEKS_EBS_CSI_DriverRole
-          if [ $? -ne 0 ]; then
-            echo "Role AmazonEKS_EBS_CSI_DriverRole not found"
-            exit 1
-          fi
-          echo "Role AmazonEKS_EBS_CSI_DriverRole found"
 
       - name: Install EBS CSI Driver
         run: |
