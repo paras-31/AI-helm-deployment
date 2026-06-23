@@ -62,7 +62,7 @@ backend:
     APP_NAME: "AI Speaking Backend"
     ENVIRONMENT: "production"
     DEBUG: "false"
-    DATABASE_URL: "postgresql+psycopg://postgres:CHANGE_ME@postgresdb.ai-db.svc.cluster.local:5432/aispeaking"
+    DATABASE_URL: "postgresql+psycopg://ai_speaking_user:ai_speaking_pass_2026@postgresdb.ai-db.svc.cluster.local:5432/ai_speaking_db"
     # CORS — comma-separated. Replace with the public host(s) of the frontend.
     CORS_ORIGINS: "http://frontend.ai-speaking.svc.cluster.local:3000"
     UPLOAD_DIR: "/app/data/uploads"
