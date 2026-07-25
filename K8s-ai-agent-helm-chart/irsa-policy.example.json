@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadAppSecrets",
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue"],
+      "Resource": "arn:aws:secretsmanager:ap-south-1:018701995398:secret:ai-troubleshooter/eks*"
+    },
+    {
+      "Sid": "PublishIncidentEmail",
+      "Effect": "Allow",
+      "Action": ["sns:Publish"],
+      "Resource": "arn:aws:sns:ap-south-1:018701995398:ai-troubleshooter-alerts"
+    }
+  ]
+}

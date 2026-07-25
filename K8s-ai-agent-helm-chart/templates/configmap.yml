@@ -1,0 +1,15 @@
+{{- if .Values.config.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.config.name }}
+  labels:
+    app: {{ .Values.config.name }}
+  namespace: {{ .Values.config.namespace }}
+data:
+  AWS_SECRETS_MANAGER_SECRET_NAME: {{ .Values.config.awsSecretsManagerSecretName }}
+  AWS_REGION: {{ .Values.config.awsRegion }}
+  RUN_MODE: {{ .Values.config.runMode }}
+  ATLASSIAN_USE_OAUTH: {{ .Values.config.atlassianUseOauth }}
+  LOG_LEVEL: {{ .Values.config.logLevel }}
+{{- end }}

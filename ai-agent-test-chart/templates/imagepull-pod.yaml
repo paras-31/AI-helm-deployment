@@ -1,0 +1,18 @@
+{{- if and .Values.enabled .Values.scenarios.imagepull.enabled }}
+# Scenario 2 — ImagePullBackOff (tag does not exist in registry)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Values.scenarios.imagepull.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.scenarios.imagepull.name }}
+    scenario: imagepull
+    {{- include "ai-agent-test.labels" . | nindent 4 }}
+spec:
+  restartPolicy: Always
+  containers:
+    - name: worker
+      image: {{ .Values.scenarios.imagepull.image }}
+      imagePullPolicy: {{ .Values.scenarios.imagepull.imagePullPolicy }}
+{{- end }}

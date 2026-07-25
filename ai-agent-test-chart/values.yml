@@ -1,0 +1,46 @@
+# Default values for ai-agent-test chart.
+# Deploy broken workloads so the AI Troubleshooter CronJob can detect and diagnose them.
+#
+# Prerequisites:
+#   - ai-agent chart deployed (CronJob in platform-agents)
+#   - WATCHED_NAMESPACES in AWS Secrets Manager includes this namespace (default: default)
+#
+# Install:
+#   helm upgrade --install ai-agent-test ai-agent-test-chart/ --namespace default
+#
+# Uninstall (cleanup):
+#   helm uninstall ai-agent-test --namespace default
+
+enabled: true
+namespace: default
+
+labels:
+  partOf: ai-troubleshooter-test
+
+scenarios:
+  crashloop:
+    enabled: true
+    name: ts-test-crashloop
+    image: busybox:1.36
+  imagepull:
+    enabled: true
+    name: ts-test-bad-image
+    image: nginx:does-not-exist-2.4.99-hotfix
+    imagePullPolicy: Always
+  readinessFail:
+    enabled: true
+    name: ts-test-readiness-fail
+    image: nginx:1.27-alpine
+    replicas: 1
+    readinessProbe:
+      path: /healthz-does-not-exist
+      port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 3
+  pendingUnschedulable:
+    enabled: true
+    name: ts-test-unschedulable
+    image: busybox:1.36
+    nodeSelector:
+      ai-troubleshooter-test-only: this-node-does-not-exist

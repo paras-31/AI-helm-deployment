@@ -1,0 +1,22 @@
+{{- if and .Values.enabled .Values.scenarios.pendingUnschedulable.enabled }}
+# Scenario 4 — Pending (no node matches impossible nodeSelector)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Values.scenarios.pendingUnschedulable.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.scenarios.pendingUnschedulable.name }}
+    scenario: pending
+    {{- include "ai-agent-test.labels" . | nindent 4 }}
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    {{- range $key, $value := .Values.scenarios.pendingUnschedulable.nodeSelector }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  containers:
+    - name: placeholder
+      image: {{ .Values.scenarios.pendingUnschedulable.image }}
+      command: ["sh", "-c", "sleep 3600"]
+{{- end }}

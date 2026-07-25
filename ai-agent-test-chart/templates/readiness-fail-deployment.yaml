@@ -1,0 +1,36 @@
+{{- if and .Values.enabled .Values.scenarios.readinessFail.enabled }}
+# Scenario 3 — Running but not Ready (readiness probe always fails)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.scenarios.readinessFail.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.scenarios.readinessFail.name }}
+    scenario: readiness
+    {{- include "ai-agent-test.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.scenarios.readinessFail.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.scenarios.readinessFail.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.scenarios.readinessFail.name }}
+        scenario: readiness
+        {{- include "ai-agent-test.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: api
+          image: {{ .Values.scenarios.readinessFail.image }}
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.scenarios.readinessFail.readinessProbe.path }}
+              port: {{ .Values.scenarios.readinessFail.readinessProbe.port }}
+            initialDelaySeconds: {{ .Values.scenarios.readinessFail.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.scenarios.readinessFail.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.scenarios.readinessFail.readinessProbe.failureThreshold }}
+{{- end }}

@@ -1,0 +1,16 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::018701995398:oidc-provider/oidc.eks.ap-south-1.amazonaws.com/id/2E5D01ACDC3468BF84EEA219B0561CBE"
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "oidc.eks.ap-south-1.amazonaws.com/id/2E5D01ACDC3468BF84EEA219B0561CBE:aud": "sts.amazonaws.com",
+        "oidc.eks.ap-south-1.amazonaws.com/id/2E5D01ACDC3468BF84EEA219B0561CBE:sub": "system:serviceaccount:platform-agents:ai-troubleshooter"
+      }
+    }
+  }]
+}

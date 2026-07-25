@@ -1,0 +1,87 @@
+# Default values for ai-agent Helm chart (AI Troubleshooter CronJob).
+#
+# Image tag is updated by CI/CD:
+#   1. Build and Push ECR  → pushes image, sets LATEST_ECR_IMAGE_TAG repo variable
+#   2. Helm Deploy workflow → helm upgrade --set image.tag=$TAG
+#
+# App-only config (agents, tasks, protected-resources) lives in the Docker image:
+#   AI-Agent-eks-aiops/config/
+
+namespace: platform-agents
+
+image:
+  repository: 018701995398.dkr.ecr.ap-south-1.amazonaws.com/ai-troubleshooter-eks
+  tag: "latest"
+  pullPolicy: Always
+
+cronjob:
+  enabled: true
+  name: ai-troubleshooter
+  labels:
+    app: ai-troubleshooter
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  activeDeadlineSeconds: 900
+  backoffLimit: 0
+  containers:
+    name: troubleshooter
+    command:
+      - run-diagnostics
+  env:
+    RUN_MODE: scan
+    ATLASSIAN_USE_OAUTH: "false"
+    LOG_LEVEL: INFO
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: false
+
+config:
+  enabled: true
+  name: ai-troubleshooter-config
+  namespace: platform-agents
+  awsSecretsManagerSecretName: "ai-troubleshooter/eks"
+  awsRegion: "ap-south-1"
+  runMode: "scan"
+  atlassianUseOauth: "false"
+  logLevel: "INFO"
+
+observations:
+  enabled: true
+  name: ai-troubleshooter-observations
+  labels:
+    app: ai-troubleshooter-observations
+  initialState: |
+    {}
+
+serviceAccount:
+  create: true
+  name: ai-troubleshooter
+  labels:
+    app: ai-troubleshooter
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::018701995398:role/ai-troubleshooter-eks"
+
+rbac:
+  create: true
+  clusterRole:
+    name: ai-troubleshooter-readonly
+  role:
+    name: ai-troubleshooter-observations
+  observationsRole:
+    name: ai-troubleshooter-observations
+    resourceName: ai-troubleshooter-observations
+  clusterRoleBinding:
+    name: ai-troubleshooter-readonly
+  observationsRoleBinding:
+    name: ai-troubleshooter-observations

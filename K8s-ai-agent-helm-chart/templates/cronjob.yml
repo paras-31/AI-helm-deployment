@@ -1,0 +1,51 @@
+{{- if .Values.cronjob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Values.cronjob.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.cronjob.labels.app }}
+spec:
+  schedule: "{{ .Values.cronjob.schedule }}"
+  concurrencyPolicy: {{ .Values.cronjob.concurrencyPolicy }}
+  startingDeadlineSeconds: {{ .Values.cronjob.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ .Values.cronjob.activeDeadlineSeconds }}
+      backoffLimit: {{ .Values.cronjob.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            app: {{ .Values.cronjob.labels.app }}
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          restartPolicy: Never
+          containers:
+            - name: {{ .Values.cronjob.containers.name }}
+              image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: {{ .Values.cronjob.containers.command }}
+              envFrom:
+                - configMapRef:
+                    name: {{ .Values.config.name }}
+              env:
+                - name: RUN_MODE
+                  value: {{ .Values.cronjob.env.RUN_MODE }}
+                - name: ATLASSIAN_USE_OAUTH
+                  value: {{ .Values.cronjob.env.ATLASSIAN_USE_OAUTH }}
+                - name: LOG_LEVEL
+                  value: {{ .Values.cronjob.env.LOG_LEVEL }}
+              resources:
+                requests:
+                  cpu: {{ .Values.cronjob.resources.requests.cpu }}
+                  memory: {{ .Values.cronjob.resources.requests.memory }}
+                limits:
+                  cpu: {{ .Values.cronjob.resources.limits.cpu }}
+                  memory: {{ .Values.cronjob.resources.limits.memory }}
+              securityContext:
+                allowPrivilegeEscalation: {{ .Values.cronjob.securityContext.allowPrivilegeEscalation }}
+                readOnlyRootFilesystem: {{ .Values.cronjob.securityContext.readOnlyRootFilesystem }}
+                runAsNonRoot: {{ .Values.cronjob.securityContext.runAsNonRoot }}
