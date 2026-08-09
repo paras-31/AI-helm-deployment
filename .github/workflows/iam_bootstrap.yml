@@ -41,7 +41,7 @@ env:
   EKS_CLUSTER: eksdemo
   AI_EKS_NAMESPACE: ai-speaking
   DB_NAMESPACE: ai-db
-  BOOTSTRAP_ROLE_ARN: arn:aws:iam::243284855400:role/ECR-UPDATE-ROLE
+  BOOTSTRAP_ROLE_ARN: arn:aws:iam::018701995398:role/ECR-UPDATE-ROLE
 
 jobs:
   iam-bootstrap:
