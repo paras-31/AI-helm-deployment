@@ -13,7 +13,7 @@ frontend:
   image:
     repository: 243284855400.dkr.ecr.us-east-1.amazonaws.com/frontend
     pullPolicy: IfNotPresent
-    tag: "v20260523-862f3cb"
+    tag: "v20260904-80255dd"
   service:
     type: LoadBalancer
     port: 3000
@@ -32,7 +32,7 @@ backend:
   image:
     repository: 243284855400.dkr.ecr.us-east-1.amazonaws.com/backapp
     pullPolicy: IfNotPresent
-    tag: "v20260830-7750bfb"
+    tag: "v20260904-80255dd"
   service:
     type: NodePort
     port: 8000
