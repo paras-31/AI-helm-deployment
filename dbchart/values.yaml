@@ -14,6 +14,7 @@ image:
   tag: "latest"
 
 namespace: ai-db
+createNamespace: false
 
 aws:
   region: us-east-1
