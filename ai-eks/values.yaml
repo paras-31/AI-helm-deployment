@@ -95,7 +95,7 @@ backend:
   # .Values.serviceAccount.annotations.role-arn to have GetSecretValue
   # permission on the source secret.
   awsSecrets:
-    enabled: true
+    enabled: false
     region: us-east-1
     sourceSecretName: "ai-speaking/backend"
     secretProviderClassName: backend-secret-provider

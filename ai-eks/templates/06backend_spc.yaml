@@ -6,6 +6,8 @@ metadata:
   namespace: {{ .Values.namespace }}
   labels:
     app: {{ include "ai-eks.backendName" . }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   provider: aws
   parameters:

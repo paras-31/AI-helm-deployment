@@ -158,6 +158,10 @@ secrets:
   secretProviderClass: db-secret-provider
   k8sSecretName: postgres-creds
 
+# Requires secrets-store CSI + AWS provider CRDs on the cluster.
+awsSecrets:
+  enabled: false
+
 # Persistent storage for Postgres data
 persistence:
   claimName: pgdata-pvc
