@@ -8,12 +8,10 @@
 #   AI-Agent-eks-aiops/config/
 
 namespace: platform-agents
-
 image:
   repository: 018701995398.dkr.ecr.ap-south-1.amazonaws.com/ai-troubleshooter-eks
-  tag: "latest"
+  tag: "7d0cdb2"
   pullPolicy: Always
-
 cronjob:
   enabled: true
   name: ai-troubleshooter
@@ -45,7 +43,6 @@ cronjob:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: false
     runAsNonRoot: false
-
 config:
   enabled: true
   name: ai-troubleshooter-config
@@ -55,7 +52,6 @@ config:
   runMode: "scan"
   atlassianUseOauth: "false"
   logLevel: "INFO"
-
 observations:
   enabled: true
   name: ai-troubleshooter-observations
@@ -63,7 +59,6 @@ observations:
     app: ai-troubleshooter-observations
   initialState: |
     {}
-
 serviceAccount:
   create: true
   name: ai-troubleshooter
@@ -71,7 +66,6 @@ serviceAccount:
     app: ai-troubleshooter
   annotations:
     eks.amazonaws.com/role-arn: "arn:aws:iam::018701995398:role/ai-troubleshooter-eks"
-
 rbac:
   create: true
   clusterRole:
