@@ -101,9 +101,28 @@ backend:
     # requires the FULL secret ARN as objectName for cross-account access.
     sourceSecretName: "arn:aws:secretsmanager:ap-south-1:018701995398:secret:ai-troubleshooter/eks-bzBQWV"
     secretProviderClassName: backend-secret-provider
+    # Keys must match the JSON field names inside the Secrets Manager secret
+    # (ai-troubleshooter/eks). These are synced into the backend-secrets K8s
+    # Secret and injected via envFrom. secretRef overrides backend-config for
+    # any overlapping names (e.g. OPENAI_BASE_URL/OPENAI_MODEL).
     keys:
+      - ANTHROPIC_API_KEY
+      - ANTHROPIC_BASE_URL
+      - ANTHROPIC_MODEL
+      - ATLASSIAN_API_TOKEN
+      - ATLASSIAN_EMAIL
+      - ATLASSIAN_SITE_URL
+      - ATLASSIAN_USE_OAUTH
+      - CLUSTER_NAME
+      - OBSERVATION_WINDOW_SECONDS
+      - ONCALL_EMAIL
       - OPENAI_API_KEY
-      - SECRET_KEY
+      - OPENAI_BASE_URL
+      - OPENAI_MODEL
+      - PROTECTED_RESOURCES_FILE
+      - REQUEST_DESCRIPTION
+      - SNS_TOPIC_ARN
+      - WATCHED_NAMESPACES
 
 
 # Service account used by the backend pod. The IAM role annotated here is
