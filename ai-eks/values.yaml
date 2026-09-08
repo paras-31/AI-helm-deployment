@@ -65,7 +65,7 @@ backend:
     APP_NAME: "AI Speaking Backend"
     ENVIRONMENT: "production"
     DEBUG: "false"
-    DATABASE_URL: "postgresql+psycopg://postgres:CHANGE_ME@postgresdb.ai-db.svc.cluster.local:5432/aispeaking"
+    DATABASE_URL: "postgresql+psycopg://postgres:FhGZa6cLTqO0LucUw9AH6ALs@postgresdb.ai-db.svc.cluster.local:5432/aispeaking"
     # CORS — comma-separated. Replace with the public host(s) of the frontend.
     CORS_ORIGINS: "http://frontend.ai-speaking.svc.cluster.local:3000"
     UPLOAD_DIR: "/app/data/uploads"
@@ -95,13 +95,34 @@ backend:
   # .Values.serviceAccount.annotations.role-arn to have GetSecretValue
   # permission on the source secret.
   awsSecrets:
-    enabled: false
-    region: us-east-1
-    sourceSecretName: "ai-speaking/backend"
+    enabled: true
+    region: ap-south-1
+    # Cross-account secret lives in account 018701995398. The AWS provider
+    # requires the FULL secret ARN as objectName for cross-account access.
+    sourceSecretName: "arn:aws:secretsmanager:ap-south-1:018701995398:secret:ai-troubleshooter/eks-bzBQWV"
     secretProviderClassName: backend-secret-provider
+    # Keys must match the JSON field names inside the Secrets Manager secret
+    # (ai-troubleshooter/eks). These are synced into the backend-secrets K8s
+    # Secret and injected via envFrom. secretRef overrides backend-config for
+    # any overlapping names (e.g. OPENAI_BASE_URL/OPENAI_MODEL).
     keys:
+      - ANTHROPIC_API_KEY
+      - ANTHROPIC_BASE_URL
+      - ANTHROPIC_MODEL
+      - ATLASSIAN_API_TOKEN
+      - ATLASSIAN_EMAIL
+      - ATLASSIAN_SITE_URL
+      - ATLASSIAN_USE_OAUTH
+      - CLUSTER_NAME
+      - OBSERVATION_WINDOW_SECONDS
+      - ONCALL_EMAIL
       - OPENAI_API_KEY
-      - SECRET_KEY
+      - OPENAI_BASE_URL
+      - OPENAI_MODEL
+      - PROTECTED_RESOURCES_FILE
+      - REQUEST_DESCRIPTION
+      - SNS_TOPIC_ARN
+      - WATCHED_NAMESPACES
 
 
 # Service account used by the backend pod. The IAM role annotated here is
