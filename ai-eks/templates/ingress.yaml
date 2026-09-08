@@ -3,6 +3,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "ai-eks.fullname" . }}
+  namespace: {{ .Values.namespace }}
   labels:
     {{- include "ai-eks.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
@@ -25,19 +26,19 @@ spec:
   {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
-    - host: {{ .host | quote }}
-      http:
+    - http:
         paths:
           {{- range .paths }}
           - path: {{ .path }}
-            {{- with .pathType }}
-            pathType: {{ . }}
-            {{- end }}
+            pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
-                name: {{ include "ai-eks.fullname" $ }}
+                name: {{ .serviceName }}
                 port:
-                  number: {{ $.Values.service.port }}
+                  number: {{ .servicePort }}
           {{- end }}
+      {{- if .host }}
+      host: {{ .host | quote }}
+      {{- end }}
     {{- end }}
 {{- end }}

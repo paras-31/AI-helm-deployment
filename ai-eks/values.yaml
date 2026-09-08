@@ -18,7 +18,7 @@ frontend:
     pullPolicy: IfNotPresent
     tag: "v20260904-80255dd"
   service:
-    type: LoadBalancer
+    type: NodePort
     port: 3000
   nameOverride: "frontend"
   selectorLabels:
@@ -144,20 +144,34 @@ service:
 
 # This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ingress:
-  enabled: false
-  className: ""
-  annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # kubernetes.io/tls-acme: "true"
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: instance
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/success-codes: "200-399"
+    alb.ingress.kubernetes.io/group.name: ai-speaking
   hosts:
-    - host: chart-example.local
+    - host: ""
       paths:
         - path: /
-          pathType: ImplementationSpecific
+          pathType: Prefix
+          serviceName: frontend
+          servicePort: 3000
+        - path: /api
+          pathType: Prefix
+          serviceName: backend
+          servicePort: 8000
+        - path: /health
+          pathType: Prefix
+          serviceName: backend
+          servicePort: 8000
   tls: []
-    # - secretName: chart-example-tls
-    #   hosts:
-    #     - chart-example.local
 
 # -- Expose the service via gateway-api HTTPRoute
 # Requires Gateway API resources and suitable controller installed within the cluster
