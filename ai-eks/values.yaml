@@ -14,7 +14,7 @@ createNamespace: true
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 frontend:
   image:
-    repository: 386370886448.dkr.ecr.us-east-1.amazonaws.com/frontend
+    repository: 386370886448.dkr.ecr.ap-south-1.amazonaws.com/frontend
     pullPolicy: IfNotPresent
     tag: "v20260904-80255dd"
   service:
@@ -33,7 +33,7 @@ imagePullSecrets: []
 
 backend:
   image:
-    repository: 386370886448.dkr.ecr.us-east-1.amazonaws.com/backapp
+    repository: 386370886448.dkr.ecr.ap-south-1.amazonaws.com/backend
     pullPolicy: IfNotPresent
     tag: "v20260904-80255dd"
   service:
