@@ -5,6 +5,9 @@ metadata:
   namespace: {{ .Values.namespace }}
   labels:
     {{- include "ai-eks.labels" . | nindent 4 }}
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/success-codes: "200"
 spec:
   type: {{ .Values.backend.service.type }}
   ports:

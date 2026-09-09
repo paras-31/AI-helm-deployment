@@ -11,9 +11,9 @@ resourceQuota:
   hard:
     pods: "20"
     requests.cpu: "2"
-    requests.memory: 2Gi
+    requests.memory: 4Gi
     limits.cpu: "4"
-    limits.memory: 4Gi
+    limits.memory: 8Gi
 # Argo CD Application uses CreateNamespace=true. Do not emit a Namespace
 # object from this chart or sync fails when the project cannot create it.
 createNamespace: true
@@ -59,27 +59,38 @@ backend:
     app: backend
   resources:
     requests:
-      cpu: 200m
-      memory: 256Mi
+      cpu: 250m
+      memory: 512Mi
     limits:
       cpu: "1"
-      memory: 1Gi
+      memory: 2Gi
 
-  # Health probes — FastAPI exposes /health, not /
+  # /health is fast (~3ms) unless the single Uvicorn worker is blocked on
+  # slow /api/auth calls (4–5s). Probe timeouts must exceed that or kubelet SIGKILLs (137).
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 12
   livenessProbe:
     httpGet:
       path: /health
       port: http
-    initialDelaySeconds: 15
+    initialDelaySeconds: 30
     periodSeconds: 20
-    timeoutSeconds: 3
+    timeoutSeconds: 10
+    failureThreshold: 5
   readinessProbe:
     httpGet:
       path: /health
       port: http
-    initialDelaySeconds: 5
+    initialDelaySeconds: 10
     periodSeconds: 10
-    timeoutSeconds: 3
+    timeoutSeconds: 10
+    failureThreshold: 6
 
   # Non-secret config is rendered into a ConfigMap and injected via envFrom.
   configMapName: backend-config
