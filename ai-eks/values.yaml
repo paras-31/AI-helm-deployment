@@ -6,6 +6,14 @@
 replicaCount: 1
 
 namespace: ai-speaking
+resourceQuota:
+  enabled: true
+  hard:
+    pods: "20"
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
 # Argo CD Application uses CreateNamespace=true. Do not emit a Namespace
 # object from this chart or sync fails when the project cannot create it.
 createNamespace: true
@@ -23,6 +31,13 @@ frontend:
   nameOverride: "frontend"
   selectorLabels:
     app: frontend
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -42,6 +57,13 @@ backend:
   nameOverride: "backend"
   selectorLabels:
     app: backend
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
   # Health probes — FastAPI exposes /health, not /
   livenessProbe:

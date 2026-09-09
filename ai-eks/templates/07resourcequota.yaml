@@ -1,0 +1,12 @@
+{{- if .Values.resourceQuota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ include "ai-eks.fullname" . }}-quota
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "ai-eks.labels" . | nindent 4 }}
+spec:
+  hard:
+    {{- toYaml .Values.resourceQuota.hard | nindent 4 }}
+{{- end }}

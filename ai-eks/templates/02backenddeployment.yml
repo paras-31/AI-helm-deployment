@@ -55,7 +55,7 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.resources }}
+          {{- with .Values.backend.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
